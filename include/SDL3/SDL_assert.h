@@ -366,7 +366,8 @@ extern SDL_DECLSPEC SDL_AssertState SDLCALL SDL_ReportAssertion(SDL_AssertData *
             const SDL_AssertState sdl_assert_state = SDL_ReportAssertion(&sdl_assert_data, SDL_FUNCTION, SDL_FILE, SDL_LINE); \
             if (sdl_assert_state == SDL_ASSERTION_RETRY) { \
                 continue; /* go again. */ \
-            } else if (sdl_assert_state == SDL_ASSERTION_BREAK) { \
+            } \
+            if (sdl_assert_state == SDL_ASSERTION_BREAK) { \
                 SDL_AssertBreakpoint(); \
             } \
             break; /* not retrying. */ \
