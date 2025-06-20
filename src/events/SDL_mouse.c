@@ -138,21 +138,25 @@ static void SDLCALL SDL_TouchMouseEventsChanged(void *userdata, const char *name
 #ifdef SDL_PLATFORM_VITA
 static void SDLCALL SDL_VitaTouchMouseDeviceChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
 {
+    Uint8 vita_touch_mouse_device = 1;
+
     SDL_Mouse *mouse = (SDL_Mouse *)userdata;
     if (hint) {
         switch (*hint) {
-        default:
         case '0':
-            mouse->vita_touch_mouse_device = 1;
+            vita_touch_mouse_device = 1;
             break;
         case '1':
-            mouse->vita_touch_mouse_device = 2;
+            vita_touch_mouse_device = 2;
             break;
         case '2':
-            mouse->vita_touch_mouse_device = 3;
+            vita_touch_mouse_device = 3;
+            break;
+        default:
             break;
         }
     }
+    mouse->vita_touch_mouse_device = vita_touch_mouse_device;
 }
 #endif
 
@@ -1040,18 +1044,14 @@ void SDL_SendMouseWheel(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseI
         SDL_SetMouseFocus(window);
     }
 
-    // Accumulate fractional wheel motion if integer mode is enabled
-    if (mouse->integer_mode_flags & 2) {
-        mouse->integer_mode_residual_scroll_x = SDL_modff(mouse->integer_mode_residual_scroll_x + x, &x);
-        mouse->integer_mode_residual_scroll_y = SDL_modff(mouse->integer_mode_residual_scroll_y + y, &y);
-    }
-
     if (x == 0.0f && y == 0.0f) {
         return;
     }
 
     // Post the event, if desired
     if (SDL_EventEnabled(SDL_EVENT_MOUSE_WHEEL)) {
+        float integer_x, integer_y;
+
         if (!mouse->relative_mode || mouse->warp_emulation_active) {
             // We're not in relative mode, so all mouse events are global mouse events
             mouseID = SDL_GLOBAL_MOUSE_ID;
@@ -1062,11 +1062,26 @@ void SDL_SendMouseWheel(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseI
         event.common.timestamp = timestamp;
         event.wheel.windowID = mouse->focus ? mouse->focus->id : 0;
         event.wheel.which = mouseID;
-        event.wheel.x = x;
-        event.wheel.y = y;
         event.wheel.direction = direction;
         event.wheel.mouse_x = mouse->x;
         event.wheel.mouse_y = mouse->y;
+
+        mouse->residual_scroll_x = SDL_modff(mouse->residual_scroll_x + x, &integer_x);
+        event.wheel.integer_x = (Sint32)integer_x;
+
+        mouse->residual_scroll_y = SDL_modff(mouse->residual_scroll_y + y, &integer_y);
+        event.wheel.integer_y = (Sint32)integer_y;
+
+        // Return the accumulated values in x/y when integer wheel mode is enabled.
+        // This is necessary for compatibility with sdl2-compat 2.32.54.
+        if (mouse->integer_mode_flags & 2) {
+            event.wheel.x = integer_x;
+            event.wheel.y = integer_y;
+        } else {
+            event.wheel.x = x;
+            event.wheel.y = y;
+        }
+
         SDL_PushEvent(&event);
     }
 }
@@ -1303,8 +1318,9 @@ static void SDL_MaybeEnableWarpEmulation(SDL_Window *window, float x, float y)
                 // Require two consecutive warps to the center within a certain timespan to enter warp emulation mode.
                 const Uint64 now = SDL_GetTicksNS();
                 if (now - mouse->last_center_warp_time_ns < WARP_EMULATION_THRESHOLD_NS) {
-                    if (SDL_SetRelativeMouseMode(true)) {
-                        mouse->warp_emulation_active = true;
+                    mouse->warp_emulation_active = true;
+                    if (!SDL_SetRelativeMouseMode(true)) {
+                        mouse->warp_emulation_active = false;
                     }
                 }
 

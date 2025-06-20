@@ -1794,7 +1794,7 @@ static struct wl_callback_listener show_hide_sync_listener = {
 
 static void exported_handle_handler(void *data, struct zxdg_exported_v2 *zxdg_exported_v2, const char *handle)
 {
-    SDL_WindowData *wind = (SDL_WindowData*)data;
+    SDL_WindowData *wind = (SDL_WindowData *)data;
     SDL_PropertiesID props = SDL_GetWindowProperties(wind->sdlwindow);
 
     SDL_SetStringProperty(props, SDL_PROP_WINDOW_WAYLAND_XDG_TOPLEVEL_EXPORT_HANDLE_STRING, handle);
@@ -2065,7 +2065,7 @@ void Wayland_ShowWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
     data->show_hide_sync_required = true;
     struct wl_callback *cb = wl_display_sync(_this->internal->display);
-    wl_callback_add_listener(cb, &show_hide_sync_listener, (void*)((uintptr_t)window->id));
+    wl_callback_add_listener(cb, &show_hide_sync_listener, (void *)((uintptr_t)window->id));
 
     data->showing_window = true;
     SDL_SendWindowEvent(window, SDL_EVENT_WINDOW_SHOWN, 0, 0);
@@ -2181,7 +2181,7 @@ void Wayland_HideWindow(SDL_VideoDevice *_this, SDL_Window *window)
 
     wind->show_hide_sync_required = true;
     struct wl_callback *cb = wl_display_sync(_this->internal->display);
-    wl_callback_add_listener(cb, &show_hide_sync_listener, (void*)((uintptr_t)window->id));
+    wl_callback_add_listener(cb, &show_hide_sync_listener, (void *)((uintptr_t)window->id));
 }
 
 static void handle_xdg_activation_done(void *data,
@@ -2209,7 +2209,7 @@ static const struct xdg_activation_token_v1_listener activation_listener_xdg = {
  *
  * As you might expect from Wayland, the general policy is to go with #2 unless
  * the client can prove to the compositor beyond a reasonable doubt that raising
- * the window will not be malicuous behavior.
+ * the window will not be malicious behavior.
  *
  * For SDL this means RaiseWindow and FlashWindow both use the same protocol,
  * but in different ways: RaiseWindow will provide as _much_ information as
@@ -3092,6 +3092,12 @@ void Wayland_DestroyWindow(SDL_VideoDevice *_this, SDL_Window *window)
         if (wind->show_hide_sync_required) {
             WAYLAND_wl_display_roundtrip(data->display);
         }
+
+        /* The compositor should have relinquished keyboard, pointer, touch, and tablet tool focus when the toplevel
+         * window was destroyed upon being hidden, but there is no guarantee of this, so ensure that all references
+         * to the window held by seats are released before destroying the underlying surface and struct.
+         */
+        Wayland_DisplayRemoveWindowReferencesFromSeats(data, wind);
 
 #ifdef SDL_VIDEO_OPENGL_EGL
         if (wind->egl_surface) {
